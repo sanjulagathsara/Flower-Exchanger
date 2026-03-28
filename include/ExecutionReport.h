@@ -1,26 +1,39 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #ifndef FLOWER_EXCHANGER_EXECUTIONREPORT_H
 #define FLOWER_EXCHANGER_EXECUTIONREPORT_H
 
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 class ExecutionReport {
 public:
-    std::string clientOrderId;
     std::string orderId;
+    std::string clientOrderId;
     std::string instrument;
-    int side;
-    int price;              // cents
-    int quantity;
-    int status;             // 0=New, 1=Rejected, 2=Fill, 3=PFill
-    std::string reason;
-    std::string transactionTime;
+    int side = 0;
+    std::string execStatus;      // New, Rejected, Fill, Pfill
+    int quantity = 0;            // New => order qty, Fill/Pfill => executed qty
+    int price = 0;               // New => order price, Fill/Pfill => execution price
+
+    static std::string formatPrice(int cents) {
+        std::ostringstream oss;
+        oss << (cents / 100) << "."
+            << std::setw(2) << std::setfill('0') << (cents % 100);
+        return oss.str();
+    }
 
     void printReport() const {
-        std::cout << clientOrderId << " " << orderId << " " << instrument << " " << side << " " << price/100 << "." << price%100 << " " << quantity << " " << status << " " << reason << " " << transactionTime << std::endl;
+        std::cout
+            << orderId << ","
+            << clientOrderId << ","
+            << instrument << ","
+            << side << ","
+            << execStatus << ","
+            << quantity << ","
+            << formatPrice(price)
+            << '\n';
     }
 };
-#endif //FLOWER_EXCHANGER_EXECUTIONREPORT_H
+
+#endif // FLOWER_EXCHANGER_EXECUTIONREPORT_H

@@ -3,13 +3,12 @@ project(Flower_Exchanger)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(Flower_Exchanger src/main.cpp
-        src/OrderBook.cpp
-        src/OrderBook.cpp
-        include/OrderBook.h
-        include/Order.h
-        include/ExecutionReport.h
-        include/Validator.h
+include_directories(include)
+
+add_executable(Flower_Exchanger
+        src/main.cpp
+        src/CsvReader.cpp
+        src/CsvWriter.cpp
         src/Validator.cpp
-        include/CsvReader.h
-        src/CsvReader.cpp)
+        src/OrderBook.cpp
+)

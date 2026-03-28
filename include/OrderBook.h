@@ -1,44 +1,42 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #ifndef FLOWER_EXCHANGER_ORDERBOOK_H
 #define FLOWER_EXCHANGER_ORDERBOOK_H
-#include <map>
+
 #include <deque>
-#include <vector>
 #include <functional>
+#include <map>
 #include <string>
-#include "Order.h"
+#include <vector>
+
 #include "ExecutionReport.h"
+#include "Order.h"
 
 class OrderBook {
 public:
     using Price = int;
 
-    OrderBook() = default;
-
-    std::vector<ExecutionReport> processOrder(Order order);
+    std::vector<ExecutionReport> processOrder(const Order& order);
 
 private:
-    std::map<Price, std::deque<Order>, std::greater<>> buyOrders;
-    std::map<Price, std::deque<Order>, std::less<>> sellOrders;
+    struct InstrumentOrderBook {
+        std::map<Price, std::deque<Order>, std::greater<>> buyOrders; // highest price first
+        std::map<Price, std::deque<Order>, std::less<>> sellOrders;   // lowest price first
+    };
 
+    std::map<std::string, InstrumentOrderBook> books;
     int nextOrderNumber = 1;
 
 private:
-    std::vector<ExecutionReport> matchBuy(Order& incoming);
-    std::vector<ExecutionReport> matchSell(Order& incoming);
+    std::vector<ExecutionReport> matchBuy(Order& incoming, InstrumentOrderBook& book);
+    std::vector<ExecutionReport> matchSell(Order& incoming, InstrumentOrderBook& book);
 
     std::string generateOrderId();
-    std::string currentTimestamp() const;
 
-    ExecutionReport makeReport(const Order& order,
-                               const std::string& orderId,
-                               int executedQty,
-                               int status,
-                               const std::string& reason = "") const;
+    ExecutionReport makeNewReport(const Order& order) const;
+    ExecutionReport makeRejectedReport(const Order& order) const;
+    ExecutionReport makeTradeReport(const Order& order,
+                                    int tradedQty,
+                                    int tradePrice,
+                                    const std::string& status) const;
 };
 
-
-#endif //FLOWER_EXCHANGER_ORDERBOOK_H
+#endif // FLOWER_EXCHANGER_ORDERBOOK_H

@@ -1,14 +1,27 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #include "../include/CsvReader.h"
+
 #include <fstream>
 #include <sstream>
-#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
-std::vector<Order> CsvReader::readOrders(const std::string& filename) {
-    std::vector<Order> orders;
+namespace {
+    std::string trim(const std::string& s) {
+        const std::string whitespace = " \t\r\n";
+        const auto start = s.find_first_not_of(whitespace);
+        if (start == std::string::npos) return "";
+        const auto end = s.find_last_not_of(whitespace);
+        return s.substr(start, end - start + 1);
+    }
+
+    bool readField(std::stringstream& ss, std::string& token) {
+        return static_cast<bool>(std::getline(ss, token, ','));
+    }
+}
+
+std::vector<ParsedOrderRow> CsvReader::readOrders(const std::string& filename) {
+    std::vector<ParsedOrderRow> rows;
 
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -17,38 +30,75 @@ std::vector<Order> CsvReader::readOrders(const std::string& filename) {
 
     std::string line;
 
-    // Skip header
+    // skip header
     std::getline(file, line);
 
     while (std::getline(file, line)) {
-        if (line.empty()) continue;
+        if (trim(line).empty()) {
+            continue;
+        }
 
+        ParsedOrderRow row;
         std::stringstream ss(line);
         std::string token;
 
-        Order order;
+        if (!readField(ss, token) || trim(token).empty()) {
+            row.error = "Missing required field: ClientOrderId";
+            rows.push_back(row);
+            continue;
+        }
+        row.order.clientOrderId = trim(token);
 
-        // Client Order ID
-        std::getline(ss, order.clientOrderId, ',');
+        if (!readField(ss, token) || trim(token).empty()) {
+            row.error = "Missing required field: Instrument";
+            rows.push_back(row);
+            continue;
+        }
+        row.order.instrument = trim(token);
 
-        // Instrument
-        std::getline(ss, order.instrument, ',');
+        if (!readField(ss, token) || trim(token).empty()) {
+            row.error = "Missing required field: Side";
+            rows.push_back(row);
+            continue;
+        }
+        try {
+            row.order.side = std::stoi(trim(token));
+        } catch (...) {
+            row.error = "Invalid side";
+            rows.push_back(row);
+            continue;
+        }
 
-        // Side
-        std::getline(ss, token, ',');
-        order.side = std::stoi(token);
+        if (!readField(ss, token) || trim(token).empty()) {
+            row.error = "Missing required field: Quantity";
+            rows.push_back(row);
+            continue;
+        }
+        try {
+            row.order.quantity = std::stoi(trim(token));
+        } catch (...) {
+            row.error = "Invalid quantity";
+            rows.push_back(row);
+            continue;
+        }
 
-        // Quantity
-        std::getline(ss, token, ',');
-        order.quantity = std::stoi(token);
+        if (!readField(ss, token) || trim(token).empty()) {
+            row.error = "Missing required field: Price";
+            rows.push_back(row);
+            continue;
+        }
+        try {
+            const double priceDouble = std::stod(trim(token));
+            row.order.price = static_cast<int>(priceDouble * 100.0 + 0.5);
+        } catch (...) {
+            row.error = "Invalid price";
+            rows.push_back(row);
+            continue;
+        }
 
-        // Price (double → int cents)
-        std::getline(ss, token, ',');
-        double priceDouble = std::stod(token);
-        order.price = static_cast<int>(priceDouble * 100 + 0.5);
-
-        orders.push_back(order);
+        row.parseSuccess = true;
+        rows.push_back(row);
     }
 
-    return orders;
+    return rows;
 }

@@ -1,30 +1,26 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #include "../include/OrderBook.h"
 
 #include <algorithm>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
 
-std::vector<ExecutionReport> OrderBook::processOrder(Order order) {
-    if (order.side == 1) {
-        return matchBuy(order);
+std::vector<ExecutionReport> OrderBook::processOrder(const Order& order) {
+    Order incoming = order;
+    incoming.orderId = generateOrderId();
+
+    auto& instrumentBook = books[incoming.instrument];
+
+    if (incoming.side == 1) {
+        return matchBuy(incoming, instrumentBook);
     }
-    return matchSell(order);
+
+    return matchSell(incoming, instrumentBook);
 }
 
-std::vector<ExecutionReport> OrderBook::matchBuy(Order& incoming) {
+std::vector<ExecutionReport> OrderBook::matchBuy(Order& incoming, InstrumentOrderBook& book) {
     std::vector<ExecutionReport> reports;
-    const std::string incomingOrderId = generateOrderId();
+    bool matchedAnything = false;
 
-    int originalQty = incoming.quantity;
-    int totalExecuted = 0;
-
-    while (incoming.quantity > 0 && !sellOrders.empty()) {
-        auto bestSellIt = sellOrders.begin(); // lowest sell price
+    while (incoming.quantity > 0 && !book.sellOrders.empty()) {
+        auto bestSellIt = book.sellOrders.begin(); // lowest sell price first
 
         if (bestSellIt->first > incoming.price) {
             break;
@@ -33,24 +29,25 @@ std::vector<ExecutionReport> OrderBook::matchBuy(Order& incoming) {
         auto& queue = bestSellIt->second;
         Order& resting = queue.front();
 
-        int tradedQty = std::min(incoming.quantity, resting.quantity);
+        const int tradedQty = std::min(incoming.quantity, resting.quantity);
+        const int tradePrice = resting.price;
 
         incoming.quantity -= tradedQty;
         resting.quantity -= tradedQty;
-        totalExecuted += tradedQty;
+        matchedAnything = true;
 
-        int incomingStatus;
-        if (incoming.quantity == 0) {
-            incomingStatus = 2; // Fill
-        } else {
-            incomingStatus = 3; // PFill
-        }
-
-        reports.push_back(makeReport(
+        reports.push_back(makeTradeReport(
             incoming,
-            incomingOrderId,
             tradedQty,
-            incomingStatus
+            tradePrice,
+            incoming.quantity == 0 ? "Fill" : "Pfill"
+        ));
+
+        reports.push_back(makeTradeReport(
+            resting,
+            tradedQty,
+            tradePrice,
+            resting.quantity == 0 ? "Fill" : "Pfill"
         ));
 
         if (resting.quantity == 0) {
@@ -58,42 +55,26 @@ std::vector<ExecutionReport> OrderBook::matchBuy(Order& incoming) {
         }
 
         if (queue.empty()) {
-            sellOrders.erase(bestSellIt);
+            book.sellOrders.erase(bestSellIt);
         }
     }
 
-    if (totalExecuted == 0) {
-        buyOrders[incoming.price].push_back(incoming);
-
-        reports.push_back(makeReport(
-            incoming,
-            incomingOrderId,
-            originalQty,
-            0 // New
-        ));
+    if (!matchedAnything) {
+        book.buyOrders[incoming.price].push_back(incoming);
+        reports.push_back(makeNewReport(incoming));
     } else if (incoming.quantity > 0) {
-        buyOrders[incoming.price].push_back(incoming);
-
-        reports.push_back(makeReport(
-            incoming,
-            incomingOrderId,
-            incoming.quantity,
-            3 // PFill
-        ));
+        book.buyOrders[incoming.price].push_back(incoming);
     }
 
     return reports;
 }
 
-std::vector<ExecutionReport> OrderBook::matchSell(Order& incoming) {
+std::vector<ExecutionReport> OrderBook::matchSell(Order& incoming, InstrumentOrderBook& book) {
     std::vector<ExecutionReport> reports;
-    const std::string incomingOrderId = generateOrderId();
+    bool matchedAnything = false;
 
-    int originalQty = incoming.quantity;
-    int totalExecuted = 0;
-
-    while (incoming.quantity > 0 && !buyOrders.empty()) {
-        auto bestBuyIt = buyOrders.begin(); // highest buy price
+    while (incoming.quantity > 0 && !book.buyOrders.empty()) {
+        auto bestBuyIt = book.buyOrders.begin(); // highest buy price first
 
         if (bestBuyIt->first < incoming.price) {
             break;
@@ -102,24 +83,25 @@ std::vector<ExecutionReport> OrderBook::matchSell(Order& incoming) {
         auto& queue = bestBuyIt->second;
         Order& resting = queue.front();
 
-        int tradedQty = std::min(incoming.quantity, resting.quantity);
+        const int tradedQty = std::min(incoming.quantity, resting.quantity);
+        const int tradePrice = resting.price;
 
         incoming.quantity -= tradedQty;
         resting.quantity -= tradedQty;
-        totalExecuted += tradedQty;
+        matchedAnything = true;
 
-        int incomingStatus;
-        if (incoming.quantity == 0) {
-            incomingStatus = 2; // Fill
-        } else {
-            incomingStatus = 3; // PFill
-        }
-
-        reports.push_back(makeReport(
+        reports.push_back(makeTradeReport(
             incoming,
-            incomingOrderId,
             tradedQty,
-            incomingStatus
+            tradePrice,
+            incoming.quantity == 0 ? "Fill" : "Pfill"
+        ));
+
+        reports.push_back(makeTradeReport(
+            resting,
+            tradedQty,
+            tradePrice,
+            resting.quantity == 0 ? "Fill" : "Pfill"
         ));
 
         if (resting.quantity == 0) {
@@ -127,28 +109,15 @@ std::vector<ExecutionReport> OrderBook::matchSell(Order& incoming) {
         }
 
         if (queue.empty()) {
-            buyOrders.erase(bestBuyIt);
+            book.buyOrders.erase(bestBuyIt);
         }
     }
 
-    if (totalExecuted == 0) {
-        sellOrders[incoming.price].push_back(incoming);
-
-        reports.push_back(makeReport(
-            incoming,
-            incomingOrderId,
-            originalQty,
-            0 // New
-        ));
+    if (!matchedAnything) {
+        book.sellOrders[incoming.price].push_back(incoming);
+        reports.push_back(makeNewReport(incoming));
     } else if (incoming.quantity > 0) {
-        sellOrders[incoming.price].push_back(incoming);
-
-        reports.push_back(makeReport(
-            incoming,
-            incomingOrderId,
-            incoming.quantity,
-            3 // PFill
-        ));
+        book.sellOrders[incoming.price].push_back(incoming);
     }
 
     return reports;
@@ -158,43 +127,41 @@ std::string OrderBook::generateOrderId() {
     return "ord" + std::to_string(nextOrderNumber++);
 }
 
-std::string OrderBook::currentTimestamp() const {
-    using namespace std::chrono;
-
-    auto now = system_clock::now();
-    auto millis = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-
-    std::time_t timeNow = system_clock::to_time_t(now);
-    std::tm localTime{};
-
-#ifdef _WIN32
-    localtime_s(&localTime, &timeNow);
-#else
-    localtime_r(&timeNow, &localTime);
-#endif
-
-    std::ostringstream oss;
-    oss << std::put_time(&localTime, "%Y%m%d-%H%M%S")
-        << "."
-        << std::setw(3) << std::setfill('0') << millis.count();
-
-    return oss.str();
-}
-
-ExecutionReport OrderBook::makeReport(const Order& order,
-                                      const std::string& orderId,
-                                      int executedQty,
-                                      int status,
-                                      const std::string& reason) const {
+ExecutionReport OrderBook::makeNewReport(const Order& order) const {
     ExecutionReport report;
+    report.orderId = order.orderId;
     report.clientOrderId = order.clientOrderId;
-    report.orderId = orderId;
     report.instrument = order.instrument;
     report.side = order.side;
+    report.execStatus = "New";
+    report.quantity = order.quantity;
     report.price = order.price;
-    report.quantity = executedQty;
-    report.status = status;
-    report.reason = reason;
-    report.transactionTime = currentTimestamp();
+    return report;
+}
+
+ExecutionReport OrderBook::makeRejectedReport(const Order& order) const {
+    ExecutionReport report;
+    report.orderId = "NA";
+    report.clientOrderId = order.clientOrderId;
+    report.instrument = order.instrument;
+    report.side = order.side;
+    report.execStatus = "Rejected";
+    report.quantity = order.quantity;
+    report.price = order.price;
+    return report;
+}
+
+ExecutionReport OrderBook::makeTradeReport(const Order& order,
+                                           int tradedQty,
+                                           int tradePrice,
+                                           const std::string& status) const {
+    ExecutionReport report;
+    report.orderId = order.orderId;
+    report.clientOrderId = order.clientOrderId;
+    report.instrument = order.instrument;
+    report.side = order.side;
+    report.execStatus = status;
+    report.quantity = tradedQty;
+    report.price = tradePrice;
     return report;
 }

@@ -1,7 +1,3 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #ifndef FLOWER_EXCHANGER_VALIDATOR_H
 #define FLOWER_EXCHANGER_VALIDATOR_H
 
@@ -13,4 +9,4 @@ public:
     static bool validate(const Order& order, std::string& reason);
 };
 
-#endif //FLOWER_EXCHANGER_VALIDATOR_H
+#endif // FLOWER_EXCHANGER_VALIDATOR_H
