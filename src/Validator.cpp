@@ -1,16 +1,24 @@
-//
-// Created by Sanjula Gathsara on 2026-03-24.
-//
-
 #include "../include/Validator.h"
-#include <regex>
-#include <set>
 
-bool Validator::validate(const Order& order, std::string& reason) {
-    static const std::set<std::string> validInstruments = {
+#include <algorithm>
+#include <cctype>
+#include <set>
+#include <string>
+
+namespace {
+    const std::set<std::string> validInstruments = {
         "Rose", "Lavender", "Lotus", "Tulip", "Orchid"
     };
 
+    bool isAlphaNumeric(const std::string& s) {
+        return !s.empty() &&
+               std::all_of(s.begin(), s.end(), [](unsigned char ch) {
+                   return std::isalnum(ch) != 0;
+               });
+    }
+}
+
+bool Validator::validate(const Order& order, std::string& reason) {
     if (order.clientOrderId.empty()) {
         reason = "Client Order ID is empty";
         return false;
@@ -21,8 +29,13 @@ bool Validator::validate(const Order& order, std::string& reason) {
         return false;
     }
 
-    if (!std::regex_match(order.clientOrderId, std::regex("^[A-Za-z0-9]+$"))) {
+    if (!isAlphaNumeric(order.clientOrderId)) {
         reason = "Client Order ID must be alphanumeric";
+        return false;
+    }
+
+    if (order.instrument.empty()) {
+        reason = "Instrument is empty";
         return false;
     }
 

@@ -1,57 +1,62 @@
+#include <exception>
 #include <iostream>
 #include <vector>
 
 #include "../include/CsvReader.h"
+#include "../include/CsvWriter.h"
+#include "../include/ExecutionReport.h"
 #include "../include/OrderBook.h"
 #include "../include/Validator.h"
 
+namespace {
+    ExecutionReport makeRejectedReport(const Order& order) {
+        ExecutionReport report;
+        report.orderId = "NA";
+        report.clientOrderId = order.clientOrderId;
+        report.instrument = order.instrument;
+        report.side = order.side;
+        report.execStatus = "Rejected";
+        report.quantity = order.quantity;
+        report.price = order.price;
+        return report;
+    }
+}
+
 int main() {
     try {
+        const std::string inputFile = "../data/order.csv";
+        const std::string outputFile = "../output/exeReports.csv";
+
         OrderBook book;
-
-        // Read CSV
-        auto orders = CsvReader::readOrders("../data/order.csv");
-
-        // Print Orders for Debugging CSV Reads
-        for (const auto& order : orders) {
-            order.printOrder();
-        }
+        const auto parsedRows = CsvReader::readOrders(inputFile);
 
         std::vector<ExecutionReport> allReports;
 
-        for (const auto& order : orders) {
-            std::string reason;
-
-            // Validate
-            if (!Validator::validate(order, reason)) {
-                ExecutionReport rejected;
-                rejected.clientOrderId = order.clientOrderId;
-                rejected.orderId = "ord_rej";
-                rejected.instrument = order.instrument;
-                rejected.side = order.side;
-                rejected.price = order.price;
-                rejected.quantity = order.quantity;
-                rejected.status = 1;
-                rejected.reason = reason;
-                rejected.transactionTime = "20260324-120000.000"; // replace later
-
-                allReports.push_back(rejected);
+        for (const auto& row : parsedRows) {
+            if (!row.parseSuccess) {
+                allReports.push_back(makeRejectedReport(row.order));
                 continue;
             }
 
-            // Send to OrderBook
-            auto reports = book.processOrder(order);
+            std::string reason;
+            if (!Validator::validate(row.order, reason)) {
+                allReports.push_back(makeRejectedReport(row.order));
+                continue;
+            }
 
+            auto reports = book.processOrder(row.order);
             allReports.insert(allReports.end(), reports.begin(), reports.end());
         }
 
-        // Print Execution Results for Debugging
-        for (const auto& r : allReports) {
-            r.printReport();
+        for (const auto& report : allReports) {
+            report.printReport();
         }
 
+        CsvWriter::writeExecutionReports(outputFile, allReports);
+
+        std::cout << "\nExecution reports written to: " << outputFile << '\n';
     } catch (const std::exception& ex) {
-        std::cerr << "Error: " << ex.what() << "\n";
+        std::cerr << "Error: " << ex.what() << '\n';
         return 1;
     }
 
